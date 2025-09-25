@@ -1,0 +1,312 @@
+<!DOCTYPE html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>YouTube SEO Tag Generator</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        primary: {
+                            50: '#eff6ff',
+                            500: '#2563eb',
+                            600: '#1d4ed8',
+                            700: '#1d4ed8'
+                        },
+                        accent: '#22c55e'
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        .main-title {
+            background: linear-gradient(90deg, #2563eb, #22c55e);
+            -webkit-background-clip: text;
+            background-clip: text;
+            color: transparent;
+        }
+        .gradient-header {
+            background: linear-gradient(135deg, rgba(37,99,235,.08), rgba(34,197,94,.08));
+            border: 1px dashed #e2e8f0;
+        }
+        .tag {
+            background: rgba(34, 197, 94, 0.15);
+            border: 1px solid #e2e8f0;
+            transition: transform .1s ease, background .2s ease;
+        }
+        .tag:hover {
+            transform: translateY(-1px);
+            background: rgba(34, 197, 94, 0.22);
+        }
+        .error {
+            background: rgba(239, 68, 68, 0.12);
+            color: #ef4444;
+            border-left: 4px solid #ef4444;
+        }
+        .success {
+            background: rgba(16, 185, 129, 0.12);
+            color: #10b981;
+            border-left: 4px solid #10b981;
+        }
+        .dark .gradient-header {
+            border-color: #334155;
+        }
+        .dark .tag {
+            border-color: #334155;
+        }
+        .loading-spinner {
+            border: 2px solid #f3f4f6;
+            border-top: 2px solid #2563eb;
+            border-radius: 50%;
+            width: 20px;
+            height: 20px;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body class="bg-slate-50 text-slate-900 min-h-screen transition-colors duration-300 dark:bg-slate-900 dark:text-slate-100">
+
+<div th:replace="~{fragments/navbar :: navbar}" th:with="activePage='tags'"></div>
+
+<div class="container mx-auto px-4 max-w-2xl mt-12 pb-12">
+    <div class="text-center mb-8">
+        <h1 class="main-title text-4xl md:text-5xl font-extrabold mb-4">YouTube SEO Tag Generator</h1>
+        <div class="gradient-header rounded-xl p-4 mt-6">
+            <p class="text-slate-600 dark:text-slate-400 text-lg mb-0">
+                Enter a YouTube video title to find and extract SEO tags from similar videos to optimize your content.
+            </p>
+        </div>
+    </div>
+
+    <div class="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-lg p-6 mb-8">
+        <form id="searchForm">
+            <div class="mb-6 text-start">
+                <label for="videoTitle" class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+                    YouTube Video Title
+                </label>
+                <input
+                        type="text"
+                        id="videoTitle"
+                        name="videoTitle"
+                        class="w-full px-4 py-3 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 dark:focus:ring-blue-800 transition-colors duration-200"
+                        placeholder="Enter the title of your YouTube video"
+                        required>
+            </div>
+            <button
+                    type="submit"
+                    id="searchBtn"
+                    class="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white font-medium py-3 px-6 rounded-lg shadow-lg transition-colors duration-200 flex items-center justify-center gap-2">
+                <div id="btnSpinner" class="loading-spinner hidden"></div>
+                <span id="btnText">Generate SEO Tags</span>
+            </button>
+        </form>
+
+        <div id="error" class="error hidden rounded-lg p-4 mt-4"></div>
+    </div>
+
+    <div id="results"></div>
+    <div id="copySuccess" class="success hidden rounded-lg p-4 mb-4">Tags copied to clipboard!</div>
+</div>
+
+<script>
+    const form = document.getElementById('searchForm');
+    const videoTitleInput = document.getElementById('videoTitle');
+    const errorDiv = document.getElementById('error');
+    const resultsDiv = document.getElementById('results');
+    const copySuccess = document.getElementById('copySuccess');
+    const searchBtn = document.getElementById('searchBtn');
+    const btnSpinner = document.getElementById('btnSpinner');
+    const btnText = document.getElementById('btnText');
+
+    function showLoading() {
+        searchBtn.disabled = true;
+        btnSpinner.classList.remove('hidden');
+        btnText.textContent = 'Searching...';
+        errorDiv.classList.add('hidden');
+        resultsDiv.innerHTML = '';
+        copySuccess.classList.add('hidden');
+    }
+
+    function hideLoading() {
+        searchBtn.disabled = false;
+        btnSpinner.classList.add('hidden');
+        btnText.textContent = 'Generate SEO Tags';
+    }
+
+    form.addEventListener('submit', async function(e) {
+        e.preventDefault();
+
+        const videoTitle = videoTitleInput.value.trim();
+        if (!videoTitle) {
+            errorDiv.textContent = 'Please enter a video title';
+            errorDiv.classList.remove('hidden');
+            return;
+        }
+
+        showLoading();
+
+        try {
+            const response = await fetch('/api/youtube-tag/search', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json'
+                },
+                body: JSON.stringify({ videoTitle: videoTitle })
+            });
+
+            const data = await response.json();
+            hideLoading();
+
+            if (!response.ok) {
+                errorDiv.textContent = data.error || 'An error occurred. Please try again.';
+                errorDiv.classList.remove('hidden');
+                return;
+            }
+
+            renderResults(data);
+
+        } catch (err) {
+            console.error('Search error:', err);
+            hideLoading();
+            errorDiv.textContent = 'Network error. Please check your connection and try again.';
+            errorDiv.classList.remove('hidden');
+        }
+    });
+
+    function renderResults(data) {
+        if (!data.primaryVideo && (!data.relatedVideos || data.relatedVideos.length === 0)) {
+            resultsDiv.innerHTML = '<div class="error rounded-lg p-4">No tags found for this video. Try a different title or check your API configuration.</div>';
+            return;
+        }
+
+        let html = '';
+
+        // Primary Video Tags
+        if (data.primaryVideo && data.primaryVideo.tags && data.primaryVideo.tags.length > 0) {
+            html += `
+            <div class="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-lg p-6 mb-8">
+                <div class="flex justify-between items-center mb-4">
+                    <div class="flex items-center gap-2 font-bold text-slate-900 dark:text-slate-100">
+                        <i class="bi bi-star-fill text-blue-500"></i> <span>Primary Video Tags</span>
+                    </div>
+                    <button class="bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium py-2 px-4 rounded-lg transition-colors duration-200 flex items-center gap-2" onclick="copyTags('${escapeHtml(data.primaryVideo.tags.join(", "))}')">
+                        <i class="bi bi-clipboard2-check"></i> Copy Tags
+                    </button>
+                </div>
+                <div class="text-slate-600 dark:text-slate-400 mb-4">
+                    <div class="font-medium">${escapeHtml(data.primaryVideo.title || 'Untitled')}</div>
+                    <span class='mt-1 inline-block bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-600 rounded-full px-3 py-1 text-xs'>
+                        ${escapeHtml(data.primaryVideo.channelTitle || 'Unknown Channel')}
+                    </span>
+                </div>
+                <div class="flex flex-wrap gap-2">${data.primaryVideo.tags.map(tag =>
+                    `<span class='tag inline-flex items-center gap-1 rounded-full px-3 py-2 text-sm'>
+                        <i class='bi bi-hash text-xs'></i>${escapeHtml(tag)}
+                    </span>`
+                ).join('')}</div>
+            </div>`;
+        }
+
+        // Related Videos Tags
+        if (data.relatedVideos && data.relatedVideos.length > 0) {
+            const allTags = Array.from(new Set([
+                ...(data.primaryVideo && data.primaryVideo.tags ? data.primaryVideo.tags : []),
+                ...data.relatedVideos.flatMap(v => v.tags || [])
+            ]));
+
+            html += `
+            <div class="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-lg p-6">
+                <div class="flex justify-between items-center mb-4">
+                    <div class="flex items-center gap-2 font-bold text-slate-900 dark:text-slate-100">
+                        <i class="bi bi-collection text-blue-500"></i>
+                        <span>Related Videos (${data.relatedVideos.length})</span>
+                    </div>
+                    <button class="bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium py-2 px-4 rounded-lg transition-colors duration-200 flex items-center gap-2" onclick="copyTags('${escapeHtml(allTags.join(", "))}')">
+                        <i class="bi bi-clipboard2"></i> Copy All (${allTags.length})
+                    </button>
+                </div>
+                <div class="space-y-6">`;
+
+            data.relatedVideos.forEach((video, index) => {
+                html += `
+                <div class='border-b border-slate-200 dark:border-slate-600 last:border-b-0 pb-4 last:pb-0'>
+                    <div class='flex items-start justify-between mb-3'>
+                        <div class='flex-1'>
+                            <div class='font-semibold text-slate-900 dark:text-slate-100 mb-1'>
+                                <i class='bi bi-play-btn mr-2 text-blue-500 text-sm'></i>
+                                ${escapeHtml(video.title || 'Untitled')}
+                            </div>
+                            <span class='inline-block bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-600 rounded-full px-3 py-1 text-xs'>
+                                ${escapeHtml(video.channelTitle || 'Unknown Channel')}
+                            </span>
+                        </div>
+                        <button class='ml-3 bg-slate-600 hover:bg-slate-700 text-white text-xs font-medium py-1 px-3 rounded transition-colors duration-200' onclick="copyTags('${escapeHtml((video.tags || []).join(", "))}')">
+                            Copy
+                        </button>
+                    </div>
+                    <div class="flex flex-wrap gap-2">${
+                        (video.tags && video.tags.length > 0)
+                        ? video.tags.map(tag =>
+                            `<span class='tag inline-flex items-center gap-1 rounded-full px-3 py-2 text-sm'>
+                                <i class='bi bi-tag text-xs'></i>${escapeHtml(tag)}
+                            </span>`
+                        ).join('')
+                        : '<span class="text-slate-500 dark:text-slate-400 italic text-sm">No tags found for this video</span>'
+                    }</div>
+                </div>`;
+            });
+
+            html += `</div></div>`;
+        }
+
+        resultsDiv.innerHTML = html;
+    }
+
+    function escapeHtml(text) {
+        if (!text) return '';
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+    }
+
+    window.copyTags = function(tags) {
+        if (!tags || tags.trim() === '') {
+            alert('No tags to copy');
+            return;
+        }
+
+        navigator.clipboard.writeText(tags)
+            .then(() => {
+                copySuccess.classList.remove('hidden');
+                setTimeout(() => { copySuccess.classList.add('hidden'); }, 3000);
+            })
+            .catch(() => {
+                // Fallback for older browsers
+                const textArea = document.createElement('textarea');
+                textArea.value = tags;
+                document.body.appendChild(textArea);
+                textArea.select();
+                try {
+                    document.execCommand('copy');
+                    copySuccess.classList.remove('hidden');
+                    setTimeout(() => { copySuccess.classList.add('hidden'); }, 3000);
+                } catch (err) {
+                    alert('Could not copy tags. Please copy manually: ' + tags);
+                }
+                document.body.removeChild(textArea);
+            });
+    };
+</script>
+</body>
+</html>

@@ -1,0 +1,425 @@
+<!DOCTYPE html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>YouTube Video Downloader</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        primary: {
+                            50: '#eff6ff',
+                            500: '#2563eb',
+                            600: '#1d4ed8',
+                            700: '#1d4ed8'
+                        },
+                        accent: '#22c55e'
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        .main-title {
+            background: linear-gradient(90deg, #2563eb, #22c55e);
+            -webkit-background-clip: text;
+            background-clip: text;
+            color: transparent;
+        }
+        .gradient-header {
+            background: linear-gradient(135deg, rgba(37,99,235,.08), rgba(34,197,94,.08));
+            border: 1px dashed #e2e8f0;
+        }
+        .download-option {
+            border: 1px solid #e2e8f0;
+            border-radius: 12px;
+            transition: all 0.3s ease;
+            background: white;
+        }
+        .download-option:hover {
+            border-color: #3b82f6;
+            box-shadow: 0 8px 25px -8px rgba(59, 130, 246, 0.3);
+            transform: translateY(-2px);
+        }
+        .video-option {
+            border-left: 4px solid #3b82f6;
+        }
+        .audio-option {
+            border-left: 4px solid #22c55e;
+        }
+        .quality-4k { background: linear-gradient(45deg, #dc2626, #b91c1c); }
+        .quality-1080p { background: linear-gradient(45deg, #ea580c, #c2410c); }
+        .quality-720p { background: linear-gradient(45deg, #ca8a04, #a16207); }
+        .quality-480p { background: linear-gradient(45deg, #16a34a, #15803d); }
+        .quality-360p { background: linear-gradient(45deg, #2563eb, #1d4ed8); }
+        .quality-audio { background: linear-gradient(45deg, #7c3aed, #6d28d9); }
+
+        .error {
+            background: rgba(239, 68, 68, 0.12);
+            color: #ef4444;
+            border-left: 4px solid #ef4444;
+        }
+        .success {
+            background: rgba(16, 185, 129, 0.12);
+            color: #10b981;
+            border-left: 4px solid #10b981;
+        }
+        .video-info {
+            background: linear-gradient(135deg, rgba(59, 130, 246, 0.05), rgba(34, 197, 94, 0.05));
+            border: 1px solid #e2e8f0;
+        }
+        .dark .gradient-header {
+            border-color: #334155;
+        }
+        .dark .download-option {
+            background: #1e293b;
+            border-color: #334155;
+        }
+        .dark .download-option:hover {
+            border-color: #3b82f6;
+        }
+        .dark .video-info {
+            background: linear-gradient(135deg, rgba(59, 130, 246, 0.08), rgba(34, 197, 94, 0.08));
+            border-color: #334155;
+        }
+
+        .download-progress {
+            transition: width 0.3s ease;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        .downloading {
+            animation: pulse 2s infinite;
+        }
+    </style>
+</head>
+<body class="bg-slate-50 text-slate-900 min-h-screen transition-colors duration-300 dark:bg-slate-900 dark:text-slate-100">
+
+<div th:replace="~{fragments/navbar :: navbar}" th:with="activePage='download'"></div>
+
+<div class="container mx-auto px-4 max-w-6xl mt-12 pb-12">
+    <!-- Page Header -->
+    <div class="text-center mb-8">
+        <h1 class="main-title text-4xl md:text-5xl font-extrabold mb-4">YouTube Video Downloader</h1>
+        <div class="gradient-header rounded-xl p-4 mt-6">
+            <p class="text-slate-600 dark:text-slate-400 text-lg mb-0">
+                Download YouTube videos and audio in multiple formats and qualities with real-time streaming.
+            </p>
+        </div>
+    </div>
+
+    <!-- Input Form -->
+    <div class="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-lg p-6 mb-8">
+        <form id="downloadForm">
+            <label for="videoUrlOrId" class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+                YouTube Video URL or ID
+            </label>
+            <div class="flex gap-3">
+                <input type="text" id="videoUrlOrId" name="videoUrlOrId"
+                       class="flex-1 px-4 py-3 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 dark:focus:ring-blue-800 transition-colors duration-200"
+                       placeholder="https://www.youtube.com/watch?v=... or video ID"
+                       required>
+                <button type="submit" id="fetchBtn"
+                        class="bg-blue-600 hover:bg-blue-700 text-white font-medium py-3 px-6 rounded-lg shadow-lg transition-colors duration-200 flex items-center gap-2">
+                    <i class="bi bi-search"></i> Get Download Links
+                </button>
+            </div>
+        </form>
+
+        <!-- Loading & Error Messages -->
+        <div id="loading" class="hidden text-center py-8 text-slate-600 dark:text-slate-400">
+            <i class="bi bi-hourglass-split text-3xl mb-3 block animate-spin"></i>
+            Analyzing video and fetching download options...
+        </div>
+        <div id="error" class="error hidden rounded-lg p-4 mt-4"></div>
+    </div>
+
+    <!-- Video Information -->
+    <div id="videoInfo" class="hidden video-info rounded-2xl p-6 mb-8">
+        <div class="grid grid-cols-1 lg:grid-cols-4 gap-6 items-center">
+            <div class="lg:col-span-1">
+                <div class="relative">
+                    <img id="videoThumbnail" src="" alt="" class="w-full rounded-lg shadow-md">
+                    <div class="absolute inset-0 flex items-center justify-center">
+                        <i class="bi bi-play-circle-fill text-white text-6xl drop-shadow-lg opacity-80"></i>
+                    </div>
+                </div>
+            </div>
+            <div class="lg:col-span-2">
+                <h2 id="videoTitle" class="text-xl font-bold text-slate-900 dark:text-slate-100 mb-2"></h2>
+                <p id="videoChannel" class="text-slate-600 dark:text-slate-400 mb-4"></p>
+                <div class="flex items-center gap-4 text-sm text-slate-500 dark:text-slate-400">
+                    <span><i class="bi bi-play-circle"></i> <span id="videoId"></span></span>
+                    <span><i class="bi bi-download"></i> Multiple formats available</span>
+                </div>
+            </div>
+            <div class="lg:col-span-1">
+                <a id="watchOnYouTube" href="#" target="_blank"
+                   class="w-full bg-red-600 hover:bg-red-700 text-white font-medium py-3 px-4 rounded-lg transition-colors duration-200 flex items-center justify-center gap-2 mb-3">
+                    <i class="bi bi-youtube"></i> Watch on YouTube
+                </a>
+                <div class="text-center text-xs text-slate-500 dark:text-slate-400">
+                    <i class="bi bi-shield-check"></i> Safe & Secure Download
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Download Options -->
+    <div id="downloadOptions" class="hidden">
+        <!-- Video Downloads -->
+        <div class="mb-8">
+            <h3 class="text-2xl font-bold text-slate-900 dark:text-slate-100 mb-6 flex items-center gap-3">
+                <i class="bi bi-camera-video text-blue-500 text-3xl"></i>
+                <span>Video Downloads</span>
+                <span class="text-sm font-normal text-slate-500 dark:text-slate-400">(Video + Audio)</span>
+            </h3>
+            <div id="videoOptions" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4"></div>
+        </div>
+
+        <!-- Audio Downloads -->
+        <div class="mb-8">
+            <h3 class="text-2xl font-bold text-slate-900 dark:text-slate-100 mb-6 flex items-center gap-3">
+                <i class="bi bi-music-note text-green-500 text-3xl"></i>
+                <span>Audio Only Downloads</span>
+                <span class="text-sm font-normal text-slate-500 dark:text-slate-400">(Extract Audio)</span>
+            </h3>
+            <div id="audioOptions" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4"></div>
+        </div>
+    </div>
+
+    <!-- Download Status -->
+    <div id="downloadStatus" class="hidden success rounded-lg p-4 mb-4">
+        <div class="flex items-center gap-3">
+            <i class="bi bi-download text-xl downloading"></i>
+            <div class="flex-1">
+                <div class="font-semibold">Download Started!</div>
+                <div class="text-sm opacity-80" id="downloadMessage">Your download should begin shortly...</div>
+                <div class="w-full bg-green-200 dark:bg-green-800 rounded-full h-2 mt-2">
+                    <div id="progressBar" class="download-progress bg-green-600 h-2 rounded-full" style="width: 0%"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    let currentVideoData = null;
+
+    const form = document.getElementById('downloadForm');
+    const videoUrlOrIdInput = document.getElementById('videoUrlOrId');
+    const loading = document.getElementById('loading');
+    const errorDiv = document.getElementById('error');
+    const videoInfo = document.getElementById('videoInfo');
+    const downloadOptions = document.getElementById('downloadOptions');
+    const downloadStatus = document.getElementById('downloadStatus');
+
+    form.addEventListener('submit', async function(e) {
+        e.preventDefault();
+        hideAllMessages();
+        loading.classList.remove('hidden');
+
+        const videoUrlOrId = videoUrlOrIdInput.value.trim();
+
+        try {
+            const formData = new FormData();
+            formData.append('videoUrlOrId', videoUrlOrId);
+
+            const response = await fetch('/get-download-links', {
+                method: 'POST',
+                body: formData
+            });
+
+            const data = await response.json();
+            loading.classList.add('hidden');
+
+            if (!response.ok) {
+                showError(data.error || 'An error occurred while fetching video information.');
+                return;
+            }
+
+            currentVideoData = data;
+            displayVideoInfo(data);
+            displayDownloadOptions(data.downloadOptions);
+
+        } catch (error) {
+            loading.classList.add('hidden');
+            showError('An error occurred. Please check your internet connection and try again.');
+            console.error('Error:', error);
+        }
+    });
+
+    function hideAllMessages() {
+        errorDiv.classList.add('hidden');
+        videoInfo.classList.add('hidden');
+        downloadOptions.classList.add('hidden');
+        downloadStatus.classList.add('hidden');
+    }
+
+    function showError(message) {
+        errorDiv.textContent = message;
+        errorDiv.classList.remove('hidden');
+    }
+
+    function displayVideoInfo(data) {
+        document.getElementById('videoThumbnail').src = data.thumbnail;
+        document.getElementById('videoThumbnail').alt = data.title;
+        document.getElementById('videoTitle').textContent = data.title;
+        document.getElementById('videoChannel').textContent = data.channelTitle;
+        document.getElementById('videoId').textContent = data.videoId;
+        document.getElementById('watchOnYouTube').href = data.youtubeUrl;
+
+        videoInfo.classList.remove('hidden');
+    }
+
+    function displayDownloadOptions(options) {
+        const videoContainer = document.getElementById('videoOptions');
+        const audioContainer = document.getElementById('audioOptions');
+
+        videoContainer.innerHTML = '';
+        audioContainer.innerHTML = '';
+
+        // Filter and sort options
+        const videoOptions = options.filter(opt => opt.type === 'video')
+                                   .sort((a, b) => getQualityOrder(b.quality) - getQualityOrder(a.quality));
+        const audioOptions = options.filter(opt => opt.type === 'audio')
+                                   .sort((a, b) => getAudioQualityOrder(b.quality) - getAudioQualityOrder(a.quality));
+
+        videoOptions.forEach(option => {
+            videoContainer.appendChild(createDownloadOption(option));
+        });
+
+        audioOptions.forEach(option => {
+            audioContainer.appendChild(createDownloadOption(option));
+        });
+
+        downloadOptions.classList.remove('hidden');
+    }
+
+    function getQualityOrder(quality) {
+        const order = {
+            '2160p': 6, '4K': 6,
+            '1440p': 5,
+            '1080p': 4,
+            '720p': 3,
+            '480p': 2,
+            '360p': 1,
+            '240p': 0,
+            '144p': 0
+        };
+        return order[quality] || 0;
+    }
+
+    function getAudioQualityOrder(quality) {
+        const order = {
+            '320kbps': 5,
+            '256kbps': 4,
+            '192kbps': 3,
+            '128kbps': 2,
+            '96kbps': 1,
+            '64kbps': 0
+        };
+        return order[quality] || 0;
+    }
+
+    function createDownloadOption(option) {
+        const div = document.createElement('div');
+        const isVideo = option.type === 'video';
+        const qualityClass = getQualityClass(option.quality);
+
+        div.className = `download-option ${isVideo ? 'video-option' : 'audio-option'} p-4 dark:bg-slate-800`;
+
+        div.innerHTML = `
+            <div class="flex items-center justify-between mb-3">
+                <div class="flex items-center gap-3">
+                    <div class="w-12 h-12 rounded-lg flex items-center justify-center ${qualityClass} text-white font-bold shadow-lg">
+                        <i class="bi ${isVideo ? 'bi-camera-video' : 'bi-music-note'} text-lg"></i>
+                    </div>
+                    <div>
+                        <div class="font-bold text-slate-900 dark:text-slate-100">${option.quality}</div>
+                        <div class="text-sm text-slate-600 dark:text-slate-400">${option.format.toUpperCase()}</div>
+                    </div>
+                </div>
+                <div class="text-right">
+                    <div class="text-sm font-semibold text-slate-700 dark:text-slate-300">${option.size}</div>
+                    <div class="text-xs text-slate-500 dark:text-slate-400">${isVideo ? 'Video+Audio' : 'Audio Only'}</div>
+                </div>
+            </div>
+            <button onclick="initiateDownload('${option.downloadUrl}', '${option.format}', '${option.quality}', '${option.type}')"
+                    class="w-full bg-gradient-to-r ${isVideo ? 'from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700' : 'from-green-500 to-green-600 hover:from-green-600 hover:to-green-700'} text-white font-medium py-3 px-4 rounded-lg transition-all duration-200 flex items-center justify-center gap-2 transform hover:scale-105 hover:shadow-lg">
+                <i class="bi bi-download"></i>
+                Download ${option.format.toUpperCase()}
+            </button>
+        `;
+
+        return div;
+    }
+
+    function getQualityClass(quality) {
+        if (quality.includes('2160') || quality.includes('4K')) return 'quality-4k';
+        if (quality.includes('1080')) return 'quality-1080p';
+        if (quality.includes('720')) return 'quality-720p';
+        if (quality.includes('480')) return 'quality-480p';
+        if (quality.includes('360')) return 'quality-360p';
+        return 'quality-audio';
+    }
+
+    function initiateDownload(downloadUrl, format, quality, type) {
+        // Show download status
+        const message = `Downloading ${currentVideoData.title} in ${quality} ${format.toUpperCase()}`;
+        document.getElementById('downloadMessage').textContent = message;
+        downloadStatus.classList.remove('hidden');
+
+        // Animate progress bar
+        animateProgressBar();
+
+        // Create download link and trigger download
+        const link = document.createElement('a');
+        link.href = downloadUrl;
+        link.download = `${currentVideoData.videoId}_${quality}.${format}`;
+        link.style.display = 'none';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+
+        // Hide download status after completion
+        setTimeout(() => {
+            downloadStatus.classList.add('hidden');
+            document.getElementById('progressBar').style.width = '0%';
+        }, 5000);
+    }
+
+    function animateProgressBar() {
+        const progressBar = document.getElementById('progressBar');
+        let progress = 0;
+
+        const interval = setInterval(() => {
+            progress += Math.random() * 20;
+            if (progress >= 100) {
+                progress = 100;
+                clearInterval(interval);
+                document.getElementById('downloadMessage').textContent = 'Download completed successfully!';
+            }
+            progressBar.style.width = progress + '%';
+        }, 200);
+    }
+
+    // Auto-hide messages after delay
+    function showTemporaryMessage(element, duration = 5000) {
+        setTimeout(() => {
+            element.classList.add('hidden');
+        }, duration);
+    }
+</script>
+
+</body>
+</html>

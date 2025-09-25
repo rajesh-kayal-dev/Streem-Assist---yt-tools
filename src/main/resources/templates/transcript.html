@@ -1,0 +1,332 @@
+<!DOCTYPE html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>YouTube Transcript Extractor</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        primary: {
+                            50: '#eff6ff',
+                            500: '#2563eb',
+                            600: '#1d4ed8',
+                            700: '#1d4ed8'
+                        },
+                        accent: '#22c55e'
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        .main-title {
+            background: linear-gradient(90deg, #2563eb, #22c55e);
+            -webkit-background-clip: text;
+            background-clip: text;
+            color: transparent;
+        }
+        .gradient-header {
+            background: linear-gradient(135deg, rgba(37,99,235,.08), rgba(34,197,94,.08));
+            border: 1px dashed #e2e8f0;
+        }
+        .transcript-entry {
+            border: 1px solid #e2e8f0;
+            border-radius: 8px;
+            transition: all 0.2s ease;
+            cursor: pointer;
+        }
+        .transcript-entry:hover {
+            border-color: #2563eb;
+            box-shadow: 0 2px 8px rgba(37, 99, 235, 0.1);
+        }
+        .transcript-text {
+            background: rgba(148,163,184,0.05);
+            border-radius: 6px;
+            border: 1px solid #f1f5f9;
+            padding: 1rem;
+            min-height: 60px;
+            white-space: pre-wrap;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+        .error {
+            background: rgba(239, 68, 68, 0.12);
+            color: #ef4444;
+            border-left: 4px solid #ef4444;
+        }
+        .success {
+            background: rgba(16, 185, 129, 0.12);
+            color: #10b981;
+            border-left: 4px solid #10b981;
+        }
+        .timestamp-badge {
+            background: rgba(37, 99, 235, 0.1);
+            color: #1d4ed8;
+            border: 1px solid rgba(37, 99, 235, 0.2);
+        }
+        .dark .gradient-header {
+            border-color: #334155;
+        }
+        .dark .transcript-entry {
+            border-color: #334155;
+        }
+        .dark .transcript-entry:hover {
+            border-color: #3b82f6;
+            box-shadow: 0 2px 8px rgba(59, 130, 246, 0.1);
+        }
+        .dark .transcript-text {
+            background: rgba(148,163,184,0.08);
+            border-color: #334155;
+            color: #f1f5f9;
+        }
+        .dark .timestamp-badge {
+            background: rgba(59, 130, 246, 0.15);
+            color: #60a5fa;
+            border-color: rgba(59, 130, 246, 0.3);
+        }
+    </style>
+</head>
+<body class="bg-slate-50 text-slate-900 min-h-screen transition-colors duration-300 dark:bg-slate-900 dark:text-slate-100">
+
+<div th:replace="~{fragments/navbar :: navbar}" th:with="activePage='transcript'"></div>
+
+<div class="container mx-auto px-4 max-w-4xl mt-12 pb-12">
+    <!-- Header -->
+    <div class="text-center mb-8">
+        <h1>Welcome to YouTubeTools</h1>
+        <a href="/oauth2/authorization/google">Login with Google</a>
+        <h1 class="main-title text-4xl md:text-5xl font-extrabold mb-4">YouTube Transcript Extractor</h1>
+        <div class="gradient-header rounded-xl p-4 mt-6">
+            <p class="text-slate-600 dark:text-slate-400 text-lg mb-0">
+                Extract captions and subtitles from any YouTube video with accurate timestamps.
+            </p>
+        </div>
+    </div>
+
+    <!-- Form Section -->
+    <div class="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-lg p-6 mb-8">
+        <form id="transcriptForm">
+            <label for="videoUrlOrId" class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+                YouTube Video URL or ID
+            </label>
+            <input type="text" id="videoUrlOrId" name="videoUrlOrId"
+                   class="w-full px-4 py-3 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 dark:focus:ring-blue-800 transition-colors duration-200 mb-4"
+                   placeholder="Enter YouTube URL or Video ID..."
+                   required>
+            <button type="submit" id="extractBtn"
+                    class="bg-blue-600 hover:bg-blue-700 text-white font-medium py-3 px-6 rounded-lg shadow-lg transition-colors duration-200 flex items-center gap-2">
+                <i class="bi bi-file-text"></i> Extract Transcript
+            </button>
+        </form>
+
+        <!-- Loading & Error Messages -->
+        <div id="loading" class="hidden text-center py-4 text-slate-600 dark:text-slate-400">
+            <i class="bi bi-hourglass-split animate-spin"></i> Extracting transcript...
+        </div>
+        <div id="error" class="error hidden rounded-lg p-4 mt-4"></div>
+    </div>
+
+    <!-- Results Section -->
+    <div id="results"></div>
+
+    <!-- Copy Success Message -->
+    <div id="copySuccess" class="success hidden rounded-lg p-4 mb-4">
+        <i class="bi bi-check-circle"></i> Transcript copied to clipboard!
+    </div>
+</div>
+
+<script>
+    const form = document.getElementById('transcriptForm');
+    const videoUrlOrIdInput = document.getElementById('videoUrlOrId');
+    const loading = document.getElementById('loading');
+    const errorDiv = document.getElementById('error');
+    const resultsDiv = document.getElementById('results');
+    const copySuccess = document.getElementById('copySuccess');
+
+    form.addEventListener('submit', async function(e) {
+        e.preventDefault();
+
+        // Reset UI
+        errorDiv.classList.add('hidden');
+        resultsDiv.innerHTML = '';
+        copySuccess.classList.add('hidden');
+        loading.classList.remove('hidden');
+
+        const videoUrlOrId = videoUrlOrIdInput.value.trim();
+
+        // Client-side validation
+        const videoId = extractVideoId(videoUrlOrId);
+        if (!videoId) {
+            loading.classList.add('hidden');
+            errorDiv.textContent = 'Invalid YouTube URL or Video ID. Please check and try again.';
+            errorDiv.classList.remove('hidden');
+            return;
+        }
+
+        // In your HTML script section, update the fetch call:
+try {
+    const response = await fetch('/api/transcript/fetch', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ videoUrlOrId: videoId })
+    });
+
+    const data = await response.json();
+    loading.classList.add('hidden');
+
+    if (!data.success) {
+        errorDiv.innerHTML = `<i class="bi bi-exclamation-triangle"></i> ${data.message || 'No transcript available for this video.'}`;
+        errorDiv.classList.remove('hidden');
+        return;
+    }
+
+    // Use data.data instead of just data
+    renderTranscript(data.data);
+
+} catch (error) {
+    loading.classList.add('hidden');
+    errorDiv.innerHTML = '<i class="bi bi-x-circle"></i> An error occurred while extracting the transcript. Please try again.';
+    errorDiv.classList.remove('hidden');
+    console.error('Error:', error);
+}
+    });
+
+    function extractVideoId(urlOrId) {
+        // Direct video ID
+        if (/^[a-zA-Z0-9_-]{11}$/.test(urlOrId)) return urlOrId;
+
+        // URL patterns
+        const patterns = [
+            /(?:https?:\/\/)?(?:www\.)?youtube\.com\/watch\?v=([a-zA-Z0-9_-]{11})/,
+            /(?:https?:\/\/)?(?:www\.)?youtu\.be\/([a-zA-Z0-9_-]{11})/,
+            /(?:https?:\/\/)?(?:www\.)?youtube\.com\/embed\/([a-zA-Z0-9_-]{11})/
+        ];
+
+        for (const pattern of patterns) {
+            const match = urlOrId.match(pattern);
+            if (match && match[1]) return match[1];
+        }
+        return null;
+    }
+
+    function renderTranscript(transcript) {
+        const entries = transcript.transcriptEntries || [];
+        const totalEntries = entries.length;
+        const trackType = transcript.trackKind === 'asr' ? 'Auto-generated' : 'Manual';
+
+        let html = `
+        <div class="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-lg p-6 mb-6">
+            <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-6 gap-4">
+                <div>
+                    <h2 class="text-xl font-bold text-slate-900 dark:text-slate-100 flex items-center gap-2">
+                        <i class="bi bi-file-text-fill text-blue-500"></i>
+                        Transcript Extracted Successfully
+                    </h2>
+                    <div class="text-slate-600 dark:text-slate-400 text-sm mt-1 flex flex-wrap gap-4">
+                        <span><i class="bi bi-translate"></i> ${transcript.language.toUpperCase()}</span>
+                        <span><i class="bi bi-gear"></i> ${trackType}</span>
+                        <span><i class="bi bi-chat-dots"></i> ${totalEntries} entries</span>
+                    </div>
+                </div>
+                <div class="flex gap-2">
+                    <button onclick="copyFullTranscript('${escapeForJs(transcript.fullTranscriptText || entries.map(e => e.text).join(' '))}')"
+                            class="bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium py-2 px-4 rounded-lg transition-colors duration-200 flex items-center gap-2">
+                        <i class="bi bi-clipboard2"></i> Copy Full Text
+                    </button>
+                    <button onclick="copyTimestampedTranscript()"
+                            class="bg-green-600 hover:bg-green-700 text-white text-sm font-medium py-2 px-4 rounded-lg transition-colors duration-200 flex items-center gap-2">
+                        <i class="bi bi-clock"></i> Copy with Times
+                    </button>
+                </div>
+            </div>
+
+            <!-- Full Transcript Text Box -->
+            <div class="mb-6">
+                <h3 class="font-semibold text-slate-900 dark:text-slate-100 mb-2 flex items-center gap-2">
+                    <i class="bi bi-file-earmark-text"></i> Full Transcript
+                </h3>
+                <div class="transcript-text">${entries.map(e => e.text).join(' ')}</div>
+            </div>
+
+            <!-- Timestamped Entries -->
+            <div>
+                <h3 class="font-semibold text-slate-900 dark:text-slate-100 mb-4 flex items-center gap-2">
+                    <i class="bi bi-stopwatch"></i> Timestamped Transcript (${totalEntries} entries)
+                </h3>
+                <div class="grid gap-3 max-h-96 overflow-y-auto pr-2">`;
+
+        entries.forEach((entry, index) => {
+            html += `
+            <div class="transcript-entry p-3 bg-slate-50 dark:bg-slate-700/50" onclick="copyEntry('${escapeForJs(entry.text)}', '${entry.formattedStartTime}')">
+                <div class="flex items-center justify-between mb-2">
+                    <span class="timestamp-badge text-xs font-mono px-2 py-1 rounded-full">
+                        ${entry.formattedStartTime}
+                    </span>
+                    <button class="text-slate-400 hover:text-blue-500 transition-colors" onclick="event.stopPropagation(); copyEntry('${escapeForJs(entry.text)}', '${entry.formattedStartTime}')">
+                        <i class="bi bi-clipboard text-sm"></i>
+                    </button>
+                </div>
+                <p class="text-slate-700 dark:text-slate-300 text-sm leading-relaxed">${entry.text}</p>
+            </div>`;
+        });
+
+        html += `
+                </div>
+            </div>
+        </div>`;
+
+        resultsDiv.innerHTML = html;
+
+        // Store data for copy functions
+        window.transcriptData = transcript;
+    }
+
+    function escapeForJs(str) {
+        return (str || '').replace(/'/g, "\\'").replace(/"/g, '\\"').replace(/\n/g, '\\n');
+    }
+
+    function copyFullTranscript(text) {
+        navigator.clipboard.writeText(text)
+            .then(() => showCopySuccess('Full transcript copied!'))
+            .catch(() => alert('Could not copy transcript.'));
+    }
+
+    function copyTimestampedTranscript() {
+        if (!window.transcriptData || !window.transcriptData.transcriptEntries) {
+            alert('No transcript data available.');
+            return;
+        }
+
+        const timestampedText = window.transcriptData.transcriptEntries
+            .map(entry => `[${entry.formattedStartTime}] ${entry.text}`)
+            .join('\n');
+
+        navigator.clipboard.writeText(timestampedText)
+            .then(() => showCopySuccess('Timestamped transcript copied!'))
+            .catch(() => alert('Could not copy transcript.'));
+    }
+
+    function copyEntry(text, timestamp) {
+        const entryText = `[${timestamp}] ${text}`;
+        navigator.clipboard.writeText(entryText)
+            .then(() => showCopySuccess('Entry copied!'))
+            .catch(() => alert('Could not copy entry.'));
+    }
+
+    function showCopySuccess(message) {
+        copySuccess.innerHTML = `<i class="bi bi-check-circle"></i> ${message}`;
+        copySuccess.classList.remove('hidden');
+        setTimeout(() => {
+            copySuccess.classList.add('hidden');
+        }, 2000);
+    }
+</script>
+
+</body>
+</html>
